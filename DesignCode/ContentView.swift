@@ -13,29 +13,71 @@ struct ContentView: View {
     let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     @State var isActive = false
     @State var isDownloading = false
+    @State var hasSimpleWave = false
+    @State var hasComplexWave = false
+    @State var hasPattern = false
+    @State var hasNoise = false
+    @State var hasEmboss = false
+    @State var isPixellated = false
+    let startDate = Date()
     
     struct AnimationValues {
         var position = CGPoint(x: 0, y: 0)
         var scale = 1.0
+        var opacity = 0.0
     }
     
     var body: some View {
-        ZStack {
-            Image(.image1)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(height: isTapped ? 600 : 300)
-                .frame(width: isTapped ? 430 : 360)
-                .cornerRadius(isTapped ? 0 : 20)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20)
-                        .strokeBorder(linearGradient)
-                        .opacity(isTapped ? 0 : 1)
-                )
-                .offset(y: isTapped ? -200 : 0)
-                .phaseAnimator([1,2], trigger: isTapped) { content, phase in
-                    content.blur(radius: phase == 2 ? 100 : 0)
+        TimelineView(.animation) { context in
+            layout
+                .frame(maxWidth: 400)
+                .dynamicTypeSize(.xSmall ... .xLarge)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(.blue.opacity(0.001))
+                .distortionEffect(ShaderLibrary.simpleWave(.float(startDate.timeIntervalSinceNow)), maxSampleOffset: CGSize(width: 100, height: 100), isEnabled: hasSimpleWave)
+                .visualEffect { content, proxy in
+                    content.distortionEffect(ShaderLibrary.complexWave(
+                        .float(startDate.timeIntervalSinceNow),
+                        .float2(proxy.size),
+                        .float(0.5),
+                        .float(8),
+                        .float(10)
+                    ), maxSampleOffset: CGSize(width: 100, height: 100), isEnabled: hasComplexWave)
                 }
+        }
+    }
+    
+    var layout: some View {
+        ZStack {
+            TimelineView(.animation) { context in
+                Image(.image1)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(height: isTapped ? 600 : 300)
+                    .frame(width: isTapped ? 430 : 360)
+                    .colorEffect(ShaderLibrary.circleLoader(.boundingRect, .float(startDate.timeIntervalSinceNow)), isEnabled: hasPattern)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .colorEffect(ShaderLibrary.noise(.float(startDate.timeIntervalSinceNow)), isEnabled: hasNoise)
+                            .blendMode(.overlay)
+                            .opacity(hasNoise ? 1 : 0)
+                    )
+                    .layerEffect(ShaderLibrary.emboss(.float(1)), maxSampleOffset: .zero, isEnabled: hasEmboss)
+                    .layerEffect(ShaderLibrary.pixellate(.float(10)), maxSampleOffset: .zero, isEnabled: isPixellated)
+                    .cornerRadius(isTapped ? 0 : 20)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20)
+                            .strokeBorder(linearGradient)
+                            .opacity(isTapped ? 0 : 1)
+                    )
+                    .offset(y: isTapped ? -200 : 0)
+                    .phaseAnimator([1,2], trigger: isTapped) { content, phase in
+                        content.blur(radius: phase == 2 ? 100 : 0)
+                    }
+                    .onTapGesture {
+                        hasNoise.toggle()
+                    }
+            }
             //Download Icon
             Circle()
                 .fill(.thinMaterial)
@@ -46,6 +88,7 @@ struct ContentView: View {
                     content
                         .offset(x: value.position.x, y: value.position.y)
                         .scaleEffect(value.scale)
+                        .opacity(value.opacity)
                 } keyframes: { value in
                     KeyframeTrack(\.position) {
                         SpringKeyframe(CGPoint(x: 100, y: -100), duration: 0.5, spring: .bouncy)
@@ -54,6 +97,9 @@ struct ContentView: View {
                     KeyframeTrack(\.scale){
                         CubicKeyframe(1.2, duration: 0.5)
                         CubicKeyframe(1, duration: 0.5)
+                    }
+                    KeyframeTrack(\.opacity){
+                        CubicKeyframe(1, duration: 0)
                     }
                 }
 
@@ -80,6 +126,13 @@ struct ContentView: View {
             
             play
                 .frame(width: isTapped ? 220 : 50)
+                .foregroundStyle(
+                    ShaderLibrary.angledFill(
+                        .float(10),
+                        .float(10),
+                        .color(.blue)
+                    )
+                )
                 .foregroundStyle(.primary, .white)
                 .font(.largeTitle)
                 .padding(20)
@@ -91,8 +144,6 @@ struct ContentView: View {
                 .cornerRadius(20)
                 .offset(y: isTapped ? 40 : -44)
         }
-        .frame(maxWidth: 400)
-        .dynamicTypeSize(.xSmall ... .xLarge)
     }
     
     var linearGradient: LinearGradient {
@@ -138,14 +189,19 @@ struct ContentView: View {
             
             HStack {
                 HStack {
-                    Image(systemName: "ellipsis")
-                        .symbolEffect(.pulse)
+                    Button { hasPattern.toggle() } label : {
+                        Image(systemName: "ellipsis")
+                            .symbolEffect(.pulse)
+                    }
+                    .tint(.primary)
                     Divider()
                     Image(systemName: "sparkle.magnifyingglass")
                         .symbolEffect(.scale.up, isActive: isActive)
+                        .onTapGesture {hasSimpleWave.toggle()}
                     Divider()
                     Image(systemName: "face.smiling")
                         .symbolEffect(.appear, isActive: isActive)
+                        .onTapGesture {hasComplexWave.toggle()}
                 }
                 .padding()
                 .frame(height: 44)
@@ -181,6 +237,7 @@ struct ContentView: View {
                 .symbolEffect(.bounce, value: isTapped)
                 .opacity(isTapped ? 1 : 0)
                 .blur(radius: isTapped ? 0 : 20)
+                .onTapGesture {hasEmboss.toggle()}
             Image(systemName: isTapped ? "pause.fill" : "play.fill")
                 .frame(width: 44)
                 .contentTransition(.symbolEffect(.replace))
@@ -198,6 +255,7 @@ struct ContentView: View {
                     time = value
                     isActive.toggle()
                 }
+                .onTapGesture {isPixellated.toggle()}
         }
     }
 }
